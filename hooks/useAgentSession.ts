@@ -605,12 +605,18 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   const cancelEdit = useCallback(() => setEdit(null), [setEdit]);
 
   const sessionStats = useMemo(() => {
-    // The live state's value is exact and newer than the snapshot's: a run that
-    // appends entries books each gap in the file, and the panel keeps reading
-    // its snapshot until the run ends (#1334).
-    const totalActiveMs = liveTotalActiveMs && liveTotalActiveMs.sessionId === data?.sessionId
+    // Active time is a monotone sum over the session's entries, so of the two
+    // readings the larger one is the newer one: the live state leads while a run
+    // appends entries behind the panel's snapshot, and the snapshot leads after
+    // a compaction or a reload, which install a newer one without reading the
+    // state (#1334).
+    const snapshotActiveMs = data?.totalActiveMs;
+    const liveActiveMs = liveTotalActiveMs && liveTotalActiveMs.sessionId === data?.sessionId
       ? liveTotalActiveMs.value
-      : data?.totalActiveMs;
+      : undefined;
+    const totalActiveMs = snapshotActiveMs === undefined && liveActiveMs === undefined
+      ? undefined
+      : Math.max(snapshotActiveMs ?? 0, liveActiveMs ?? 0);
     if (sessionStatsOverride) {
       return {
         ...sessionStatsOverride,
